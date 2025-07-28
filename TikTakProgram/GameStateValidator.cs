@@ -3,49 +3,53 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TikTakProgram.Dtos;
 
 namespace TikTakProgram
 {
     public class GameStateValidator
     {
-        private readonly string MySymbol;
-        private readonly string SessionId;
+        private readonly string _symbol;
+        private readonly string _sessionId;
+        private string reason;
+        private HttpRequests httpRequests = new HttpRequests();
 
-        public GameStateValidator(string mySymbol, string sessionId)
+        public GameStateValidator(string symbol, string sessionId)
         {
-            MySymbol = mySymbol;
-            SessionId = sessionId;
+            _symbol = symbol;
+            _sessionId = sessionId;
+            reason = string.Empty;
         }
 
-        public bool CanMove(out string reason)
+        public async Task<(bool,string)> CanMove()
         {
-            var state = HttpRequests.GetGameState(SessionId);
+            GameStatusResponseDto? state = await httpRequests.GetGameState(_sessionId);
             if (state == null)
             {
                 reason = "Failed to retrieve game state.";
-                return false;
+                return (false, reason);
             }
 
             if (state.players.Count < 2)
             {
                 reason = "Waiting for the second player.";
-                return false;
+                return (false, reason);
             }
 
             if (!string.IsNullOrEmpty(state.winner))
             {
                 reason = $"Game over. Winner: {state.winner}";
-                return false;
+                return (false, reason);
             }
 
-            if (!string.Equals(state.currentTurn, MySymbol, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(state.currentTurn, _symbol, StringComparison.OrdinalIgnoreCase))
             {
                 reason = $"It's the turn of the player with symbol: {state.currentTurn}";
-                return false;
+                return (false, reason);
             }
 
             reason = "";
-            return true;
+            return (true, reason);
         }
     }
 }

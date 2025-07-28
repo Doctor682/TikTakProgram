@@ -11,5 +11,7 @@ namespace TikTakProgram.Dtos
                                         Dictionary<string, string?> players,
                                         string? winner,
                                         string message,
+                                        string messageCode,
+                                        Dictionary<string, string?> messageParams,
                                         bool isGameOver);
 }

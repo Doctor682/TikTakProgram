@@ -7,11 +7,12 @@ using TikTakProgram.Dtos;
 
 namespace TikTakProgram
 {
-    public static class HistoryViewer
+    public class HistoryViewer
     {
-        public static void ShowGameHistory()
+        private HttpRequests httpRequests = new HttpRequests();
+        public async Task ShowGameHistory()
         {
-            List<GamesHistoryDto> history = HttpRequests.GetGamesHistory();
+            List<GamesHistoryDto> history = await httpRequests.GetGamesHistory();
             if (history.Count == 0)
             {
                 Console.WriteLine("History is empty");
@@ -47,7 +48,7 @@ namespace TikTakProgram
             Console.ReadKey(true);
         }
 
-        private static void PrintBoard(Dictionary<string, string> board)
+        private void PrintBoard(Dictionary<string, string> board)
         {
             int boardDimension = (int)Math.Sqrt(board.Count);
 
@@ -62,7 +63,7 @@ namespace TikTakProgram
             }
         }
 
-        private static void PrintColumnHeaders(int boardDimension)
+        private void PrintColumnHeaders(int boardDimension)
         {
             Console.Write("   ");
             for (int columnIndex = 0; columnIndex < boardDimension; columnIndex++)
@@ -70,7 +71,7 @@ namespace TikTakProgram
             Console.WriteLine();
         }
 
-        private static void PrintRow(Dictionary<string, string> board, int rowIndex, int boardDimension)
+        private void PrintRow(Dictionary<string, string> board, int rowIndex, int boardDimension)
         {
             Console.Write($" {rowIndex + 1} ");
 
@@ -87,12 +88,12 @@ namespace TikTakProgram
             Console.WriteLine();
         }
 
-        private static void PrintRowSeparator(int boardDimension)
+        private void PrintRowSeparator(int boardDimension)
         {
             Console.WriteLine("  " + string.Join("+", Enumerable.Repeat("---", boardDimension)));
         }
 
-        private static string GetSymbolForCell(Dictionary<string, string> board, string key)
+        private string GetSymbolForCell(Dictionary<string, string> board, string key)
         {
             return board.TryGetValue(key, out string? value) && !string.IsNullOrWhiteSpace(value)
                 ? value

@@ -4,15 +4,16 @@ using System.Threading.Tasks;
 using TikTakProgram;
 using static TikTakProgram.HttpRequests;
 
+HttpRequests httpRequests = new HttpRequests();
+
 PlayerLoginHandler.LoginMessage();
 string? playerName = PlayerLoginHandler.LoginInGame();
-
 
 while (true)
 {
     Console.Clear();
     TikTakLobbyManager lobbyPrinter = new TikTakLobbyManager(playerName);
-    var result = lobbyPrinter.ShowMenu();
+    var result = await lobbyPrinter.ShowMenu();
 
     if (result == null)
     {
@@ -22,14 +23,13 @@ while (true)
 
     var (joinResponse, sessionId) = result.Value;
 
-    //треба ось тут зробити перевірку на те чи є в лобі два гравця, не виводячи боард тільки наступний рядок.
     Console.WriteLine("Press 'Q' if you want to leave from lobby; any other will connect to lobby");
     ConsoleKeyInfo key = Console.ReadKey(true);
     if (key.Key == ConsoleKey.Q)
     {
         try
         {
-            HttpRequests.LeaveLobby(sessionId, playerName!);
+            await httpRequests.LeaveLobby(sessionId, playerName!);
             Console.WriteLine("You have left the lobby.");
         }
         catch (Exception ex)
@@ -45,6 +45,6 @@ while (true)
     Console.Clear();
     BoardDimensions dims = new BoardDimensions();
     TikTakBoardEngine game = new TikTakBoardEngine(dims, joinResponse.symbol, joinResponse.name, sessionId);
-    game.Run();
+    await game.Run();
 
 }

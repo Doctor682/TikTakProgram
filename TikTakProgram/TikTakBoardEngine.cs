@@ -8,52 +8,58 @@ namespace TikTakProgram
     public class TikTakBoardEngine
     {
         private readonly TikTakBoard Board;
-        private readonly string? MySymbol;
+        private readonly string? Symbol;
         private readonly string? PlayerName;
         private string? OpponentName;
         private readonly string SessionId;
         private readonly GameStateValidator Validator;
-        private bool gameOver, lobbyCreatorLeave = false;
+        private bool gameOver, lobbyCreatorLeave, _gameMusicStarted = false;
         private int cursorRow = 0, cursorCol = 0;
+        private CancellationTokenSource pollTokenSource = new();
+        private HttpRequests httpRequests = new HttpRequests();
 
         public TikTakBoardEngine(BoardDimensions dims, string? symbol, string? playerName, string sessionId)
         {
             Board = new TikTakBoard(dims);
-            MySymbol = symbol;
+            Symbol = symbol;
             PlayerName = playerName;
             SessionId = sessionId;
-            Validator = new GameStateValidator(MySymbol, SessionId);
+            Validator = new GameStateValidator(Symbol, SessionId);
         }
 
-        public void Run()
+        public async Task Run()
         {
             Console.CursorVisible = false;
             BoardDimensions dims = Board.Dimensions;
 
+            _ = Task.Run(() => PollLoop(pollTokenSource.Token));
             DateTime lastPoll = DateTime.UtcNow;
             DrawBoard();
 
             while (!gameOver && !lobbyCreatorLeave)
             {
-                if ((DateTime.UtcNow - lastPoll).TotalSeconds >= 2)
-                {
-                    PollServer();
-                    lastPoll = DateTime.UtcNow;
-                    DrawBoard();
-                }
-
+                DrawBoard();
                 if (Console.KeyAvailable)
                 {
                     ConsoleKey key = Console.ReadKey(true).Key;
-                    HandleKey(key);
-                    DrawBoard();
+                    await HandleKey(key);
+                    
                 }
+
+                await Task.Delay(50); 
             }
+
+            pollTokenSource.Cancel();
             Console.WriteLine("\nPress any key to return to the lobby...");
             Console.ReadKey(true);
+
+            if (!lobbyCreatorLeave)
+            {
+                await httpRequests.LeaveLobby(SessionId, PlayerName);
+            }
         }
 
-        private void HandleKey(ConsoleKey key)
+        private async Task HandleKey(ConsoleKey key)
         {
             BoardDimensions dims = Board.Dimensions;
 
@@ -76,11 +82,11 @@ namespace TikTakProgram
                     break;
 
                 case ConsoleKey.Spacebar:
-                    TryMakeMove();
+                    await TryMakeMove();
                     break;
 
                 case ConsoleKey.Escape:
-                    HttpRequests.LeaveLobby(SessionId, PlayerName);
+                    await httpRequests.LeaveLobby(SessionId, PlayerName);
                     lobbyCreatorLeave = true;
                     break;
             }
@@ -88,17 +94,17 @@ namespace TikTakProgram
 
         private void DrawBoard()
         {
-            Console.SetCursorPosition(0, 0);
-            DrawHeader();
+                Console.SetCursorPosition(0, 0);
+                DrawHeader();
 
-            for (int row = 0; row < Board.Dimensions.RowSize; row++)
-            {
-                DrawRow(row);
-                if (row < Board.Dimensions.RowSize - 1)
-                    DrawSeparator();
-            }
+                for (int row = 0; row < Board.Dimensions.RowSize; row++)
+                {
+                    DrawRow(row);
+                    if (row < Board.Dimensions.RowSize - 1)
+                        DrawSeparator();
+                }
 
-            DrawFooter();
+                DrawFooter();
         }
 
         private void DrawHeader()
@@ -134,7 +140,7 @@ namespace TikTakProgram
         private void DrawFooter()
         {
             Console.ForegroundColor = ConsoleColor.DarkGreen;
-            Console.WriteLine($"\nYou ({PlayerName}) are playing as: {MySymbol}");
+            Console.WriteLine($"\nYou ({PlayerName}) are playing as: {Symbol}");
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"Your opponent: {OpponentName}");
             Console.ForegroundColor = ConsoleColor.DarkYellow;
@@ -142,9 +148,9 @@ namespace TikTakProgram
             Console.ResetColor();
         }
 
-        private void PollServer()
+        private async Task PollServer()
         {
-            var state = HttpRequests.GetGameState(SessionId);
+            GameStatusResponseDto? state = await httpRequests.GetGameState(SessionId);
             if (state == null) return;
 
             if (state.players.Count < 2)
@@ -153,9 +159,17 @@ namespace TikTakProgram
                 return;
             }
 
-            EnsureOpponentName(state.players);
+            if (state.players.Count == 2 && OpponentName == null)
+            {
+                if (!_gameMusicStarted)
+                {
+                    TikTakMusicHandler.Stop();
+                    _gameMusicStarted = true;
+                    await TikTakMusicHandler.GameProcessSoundAsync();
+                }
+            }
 
-            ApplyBoard(state.board);
+            EnsureOpponentName(state.players);
 
             string currentTurnPlayerName = "unknown";
             if (!string.IsNullOrEmpty(state.currentTurn) && state.players.TryGetValue(state.currentTurn, out string? name))
@@ -163,23 +177,60 @@ namespace TikTakProgram
                 currentTurnPlayerName = name ?? "noname";
             }
 
-            Console.Title = $"Current turn: {state.currentTurn ?? "???"} ({currentTurnPlayerName})";
-
-            if (state.isGameOver)
+            if (state.isGameOver && !gameOver)
             {
-                Console.WriteLine(state.message);
-                Console.Title = "Let`s find new game!";
                 gameOver = true;
+                TikTakMusicHandler.Stop();
+                _gameMusicStarted = false;
+
+                ApplyBoard(state.board);
+                DrawBoard();
+
+                Console.Title = "Let's find new game!";
+
+                if (state.winner == null)
+                {
+                    TikTakMusicHandler.StopGameMusic();
+                    Console.WriteLine(state.message);
+                    await TikTakMusicHandler.PlayTieSoundAsync();
+                }
+                else
+                {
+                    try
+                    {
+                        TikTakMusicHandler.StopGameMusic();
+                        Console.WriteLine($"Winner detected: {state.winner}, my symbol: {Symbol}");
+
+                        if (string.Equals(state.winner, PlayerName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            await TikTakMusicHandler.PlayWinSoundAsync();
+                        }
+                        else
+                        {
+                            await TikTakMusicHandler.PlayLoseSoundAsync();
+
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error playing sound: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                ApplyBoard(state.board);
+                Console.Title = $"Current turn: {state.currentTurn ?? "???"} ({currentTurnPlayerName})";
             }
         }
 
 
-        private void EnsureOpponentName(Dictionary<string, string> players)
+        private void EnsureOpponentName(Dictionary<string, string?> players)
         {
             if (OpponentName != null) return;
 
             OpponentName = players
-                .Where(p => !string.Equals(p.Key, MySymbol, StringComparison.OrdinalIgnoreCase))
+                .Where(p => !string.Equals(p.Key, Symbol, StringComparison.OrdinalIgnoreCase))
                 .Select(p => p.Value)
                 .FirstOrDefault();
         }
@@ -203,11 +254,12 @@ namespace TikTakProgram
             }
         }
 
-        private void TryMakeMove()
+        private async Task TryMakeMove()
         {
-            if (!Validator.CanMove(out var reason))
+            var (isMovePossible, errorReason) = await Validator.CanMove();
+            if (!isMovePossible)
             {
-                Console.WriteLine($"Move unavailable: {reason}");
+                Console.WriteLine($"Move unavailable: {errorReason}");
                 return;
             }
 
@@ -217,11 +269,21 @@ namespace TikTakProgram
                 return;
             }
 
-            var cellAddr = new CellAddress(((char)('A' + cursorCol)).ToString(), cursorRow + 1);
-            var result = HttpRequests.SendMove(MySymbol!, cellAddr, SessionId);
+            CellAddress cellAddr = new CellAddress(((char)('A' + cursorCol)).ToString(), cursorRow + 1);
+            MoveResultDto? result =  await httpRequests.SendMove(Symbol!, cellAddr, SessionId);
 
             if (result != null)
                 ApplyBoard(result.board);
         }
+
+        private async Task PollLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested && !gameOver && !lobbyCreatorLeave)
+            {
+                await PollServer();
+                await Task.Delay(1009, token);
+            }
+        }
+
     }
 }

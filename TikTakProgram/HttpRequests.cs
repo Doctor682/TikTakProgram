@@ -7,102 +7,139 @@ using TikTakProgram.Dtos;
 
 namespace TikTakProgram;
 
-public static class HttpRequests
+public class HttpRequests
 {
-    private static readonly HttpClient client = new()
+    public readonly HttpClient client = new()
     {
         BaseAddress = new Uri("https://tiktak-server.onrender.com/")
-        //BaseAddress = new Uri("http://192.168.0.120:8080/")
+        //BaseAddress = new Uri("http://192.168.0.122:8080/")
     };
 
-    public static MoveResultDto? SendMove(string playerSymbol, CellAddress cell, string sessionId)
+    public async Task<MoveResultDto?> SendMove(string playerSymbol, CellAddress cell, string sessionId)
     {
-        var req = new MoveRequestDto(playerSymbol, cell.ToString());
-        var json = JsonConvert.SerializeObject(req);
+        MoveRequestDto? req = new MoveRequestDto(playerSymbol, cell.ToString());
+        string json = JsonConvert.SerializeObject(req);
 
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        var resp = client.PostAsync($"game/{Uri.EscapeDataString(sessionId)}/move", content).Result;
-        var respContent = resp.Content.ReadAsStringAsync().Result;
+        StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
+        HttpResponseMessage resp = await client.PostAsync($"game/{Uri.EscapeDataString(sessionId)}/move", content);
+        string respContent = await resp.Content.ReadAsStringAsync();
 
         if (!resp.IsSuccessStatusCode)
         {
-            var errorObj = JsonConvert.DeserializeObject<ErrorResponseDto>(respContent);
-            Console.WriteLine("Error: " + errorObj?.error);
+            string errorJson = await resp.Content.ReadAsStringAsync();
+            ErrorHandler.PrintServerError(errorJson);
             return null;
         }
 
         return JsonConvert.DeserializeObject<MoveResultDto>(respContent);
     }
 
-    public static GameStatusResponseDto? GetGameState(string sessionId)
+
+    public async Task<GameStatusResponseDto?> GetGameState(string sessionId)
     {
-        var resp = client.GetAsync($"game/{Uri.EscapeDataString(sessionId)}/state").Result;
+        HttpResponseMessage resp = await client.GetAsync($"game/{Uri.EscapeDataString(sessionId)}/state");
         if (!resp.IsSuccessStatusCode) return null;
 
-        var json = resp.Content.ReadAsStringAsync().Result;
+        string respContent = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            ErrorHandler.PrintServerError(respContent);
+            return null;
+        }
+
+        string json = await resp.Content.ReadAsStringAsync();
         return JsonConvert.DeserializeObject<GameStatusResponseDto>(json);
     }
 
-    public static List<SessionLobbyDto> GetAvailableLobbies()
+    public async Task<List<SessionLobbyDto>> GetAvailableLobbies()
     {
-        var resp = client.GetAsync("lobby/available").Result;
-        resp.EnsureSuccessStatusCode();
+        HttpResponseMessage resp = await client.GetAsync("lobby/available");
 
-        var json = resp.Content.ReadAsStringAsync().Result;
+        string respContent = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            ErrorHandler.PrintServerError(respContent);
+            return null;
+        }
+
+        string json = await resp.Content.ReadAsStringAsync();
 
         return JsonConvert.DeserializeObject<List<SessionLobbyDto>>(json)
                ?? new List<SessionLobbyDto>();
     }
 
-    public static JoinResponseDto JoinLobby(string sessionId, string playerName)
+    public async Task<JoinResponseDto?> JoinLobby(string sessionId, string playerName)
     {
-        var url = $"lobby/{Uri.EscapeDataString(sessionId)}/join";
+        string url = $"lobby/{Uri.EscapeDataString(sessionId)}/join";
 
         var body = new { name = playerName };
-        var json = JsonConvert.SerializeObject(body);
+        string json = JsonConvert.SerializeObject(body);
 
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
-        var resp = client.PostAsync(url, content).Result;
-        resp.EnsureSuccessStatusCode();
+        HttpResponseMessage resp = await client.PostAsync(url, content);
+        string respContent = await resp.Content.ReadAsStringAsync();
 
-        var responseJson = resp.Content.ReadAsStringAsync().Result;
-        return JsonConvert.DeserializeObject<JoinResponseDto>(responseJson)!;
+        if (!resp.IsSuccessStatusCode)
+        {
+            ErrorHandler.PrintServerError(respContent);
+            return null;
+        }
+
+        return JsonConvert.DeserializeObject<JoinResponseDto>(respContent);
     }
 
-    public static CreateSessionDto CreateSession(string playerName)
+
+    public async Task<CreateSessionDto?> CreateSession(string playerName)
     {
-        const string url = "lobby/create";
+        string url = "lobby/create";
 
-        var json = JsonConvert.SerializeObject(new PlayerJoinRequestDto(playerName));
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        string json = JsonConvert.SerializeObject(new PlayerJoinRequestDto(playerName));
+        StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var resp = client.PostAsync(url, content).Result;
-        resp.EnsureSuccessStatusCode();
+        HttpResponseMessage resp = await client.PostAsync(url, content);
+        string respContent = await resp.Content.ReadAsStringAsync();
 
-        var responseJson = resp.Content.ReadAsStringAsync().Result;
-        return JsonConvert.DeserializeObject<CreateSessionDto>(responseJson)!;
+        if (!resp.IsSuccessStatusCode)
+        {
+            ErrorHandler.PrintServerError(respContent);
+            return null;
+        }
+
+        return JsonConvert.DeserializeObject<CreateSessionDto>(respContent);
     }
 
-    public static List<GamesHistoryDto> GetGamesHistory()
-    {
-        var resp = client.GetAsync("game/history").Result;
-        resp.EnsureSuccessStatusCode();
 
-        var json = resp.Content.ReadAsStringAsync().Result;
+    public async Task<List<GamesHistoryDto>> GetGamesHistory()
+    {
+        HttpResponseMessage resp = await client.GetAsync("game/history");
+
+        string respContent = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            ErrorHandler.PrintServerError(respContent);
+            return null;
+        }
+
+        string json = await resp.Content.ReadAsStringAsync();
         return JsonConvert.DeserializeObject<List<GamesHistoryDto>>(json)
                ?? new List<GamesHistoryDto>();
     }
 
-    public static LeaveResponseDto? LeaveLobby(string sessionId, string? playerName)
+    public async Task<LeaveResponseDto?> LeaveLobby(string sessionId, string? playerName)
     {
-        var json = JsonConvert.SerializeObject(new PlayerLeaveRequestDto(playerName));
-        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        string json = JsonConvert.SerializeObject(new PlayerLeaveRequestDto(playerName));
+        StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var resp = client.PostAsync($"lobby/{Uri.EscapeDataString(sessionId)}/leave", content).Result;
-        resp.EnsureSuccessStatusCode();
+        HttpResponseMessage resp = await client.PostAsync($"lobby/{Uri.EscapeDataString(sessionId)}/leave", content);
 
-        var responseJson = resp.Content.ReadAsStringAsync().Result;
+        if (!resp.IsSuccessStatusCode)
+        {
+            string errorText = await resp.Content.ReadAsStringAsync();
+            Console.WriteLine($"[LeaveLobby] Server error: {resp.StatusCode} — {errorText}");
+            return null;
+        }
+
+        string responseJson = await resp.Content.ReadAsStringAsync();
         return JsonConvert.DeserializeObject<LeaveResponseDto>(responseJson)!;
     }
 }

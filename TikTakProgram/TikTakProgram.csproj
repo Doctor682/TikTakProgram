@@ -8,7 +8,25 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Musics\GameProcessSound.wav" />
+    <None Remove="Musics\LoseSound.wav" />
+    <None Remove="Musics\MainMusic.wav" />
+    <None Remove="Musics\TieSound.wav" />
+    <None Remove="Musics\WinSound.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Musics\GameProcessSound.wav" />
+    <EmbeddedResource Include="Musics\LoseSound.wav" />
+    <EmbeddedResource Include="Musics\MainMusic.wav" />
+    <EmbeddedResource Include="Musics\TieSound.wav" />
+    <EmbeddedResource Include="Musics\WinSound.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Terminal.Gui" Version="1.19.0" />
   </ItemGroup>
 
 </Project>
